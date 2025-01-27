@@ -15,14 +15,17 @@
  *
  */
  
-#include "Arduino.h"
+#include "fsl_common.h"
+#include "fsl_qtmr.h"
+#include "peripherals.h"
 
 void inv_imu_sleep_us(uint32_t us)
 {
-    delayMicroseconds(us);
+    SDK_DelayAtLeastUs(us, CLOCK_GetFreq(kCLOCK_CoreSysClk));
 }
 
 uint64_t inv_imu_get_time_us(void)
 {
-    return (uint64_t)micros();
+    // TODO:Maybe get this with a accuracy more than 1ms
+    return ((uint64_t)QTMR_GetCurrentTimerCount(TMR1_PERIPHERAL, TMR1_MS_COUNTER_CHANNEL)) * 1000;
 }

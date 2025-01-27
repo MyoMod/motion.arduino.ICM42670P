@@ -18,9 +18,10 @@
 #ifndef ICM42670_H
 #define ICM42670_H
 
-#include "Arduino.h"
-#include "SPI.h"
-#include "Wire.h"
+#include "fsl_lpspi.h"
+// #include "Arduino.h"
+// #include "SPI.h"
+// #include "Wire.h"
 
 extern "C" {
 #include "imu/inv_imu_driver.h"
@@ -34,10 +35,7 @@ typedef void (*ICM42670_irq_handler)(void);
 
 class ICM42670 {
   public:
-    ICM42670(TwoWire &i2c,bool address_lsb);
-    ICM42670(TwoWire &i2c,bool lsb, uint32_t freq);
-    ICM42670(SPIClass &spi,uint8_t chip_select_id);
-    ICM42670(SPIClass &spi,uint8_t cs_id, uint32_t freq);
+    ICM42670(LPSPI_Type *spi);
     int begin();
     int startAccel(uint16_t odr, uint16_t fsr);
     int startGyro(uint16_t odr, uint16_t fsr);
@@ -54,11 +52,7 @@ class ICM42670 {
     int updateApex(void);
     void enableInterrupt(uint8_t intpin, ICM42670_irq_handler handler);
 
-    uint8_t i2c_address;
-    TwoWire *i2c;
-    uint8_t spi_cs;
-    SPIClass *spi;
-    uint32_t clk_freq;
+    LPSPI_Type *spi;
     uint8_t int_status3;
   protected:
     struct inv_imu_device icm_driver;
