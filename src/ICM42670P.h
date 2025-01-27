@@ -52,20 +52,19 @@ class ICM42670 {
     int updateApex(void);
     void enableInterrupt(uint8_t intpin, ICM42670_irq_handler handler);
 
-    LPSPI_Type *spi;
-    uint8_t int_status3;
+    LPSPI_Type *m_spi;
+    uint8_t m_int_status3;
   protected:
-    struct inv_imu_device icm_driver;
-    inv_imu_interrupt_parameter_t int1_config;
-    bool use_spi;
+    struct inv_imu_device m_icm_driver;
+    inv_imu_interrupt_parameter_t m_int1_config;
     ACCEL_CONFIG0_ODR_t accel_freq_to_param(uint16_t accel_freq_hz);
     GYRO_CONFIG0_ODR_t gyro_freq_to_param(uint16_t gyro_freq_hz);
     ACCEL_CONFIG0_FS_SEL_t accel_fsr_g_to_param(uint16_t accel_fsr_g);
     GYRO_CONFIG0_FS_SEL_t gyro_fsr_dps_to_param(uint16_t gyro_fsr_dps);
     int initApex(uint8_t intpin, ICM42670_irq_handler handler);
-    uint32_t step_cnt_ovflw;
-    bool apex_tilt_enable;
-    bool apex_pedometer_enable;
+    uint32_t m_step_cnt_ovflw;
+    bool m_apex_tilt_enable;
+    bool m_apex_pedometer_enable;
 };
 
 #endif // ICM42670_H

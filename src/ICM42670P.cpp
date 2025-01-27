@@ -40,10 +40,16 @@ static const char* APEX_ACTIVITY[3] = {"IDLE","WALK","RUN"};
 static inv_imu_sensor_event_t* event;
 
 
-// ICM42670 constructor for spi interface, default frequency
+/**
+ * @brief Construct a new ICM42670::ICM42670 object.
+ *          This doesn't initialize the sensor, use begin() for that.
+ * 
+ * @note The SPI peripheral must be initialized by the user/SDK
+ * 
+ * @param spi_ref 
+ */
 ICM42670::ICM42670(LPSPI_Type *spi_ref) {
-    spi = spi_ref;
-    use_spi = true;
+    m_spi = spi_ref;
 }
 
 /* starts communication with the ICM42670 */
@@ -53,7 +59,7 @@ int ICM42670::begin() {
     uint8_t who_am_i;
     inv_imu_int1_pin_config_t int1_pin_config;
 
-    LPSPI_Enable(spi, 1);
+    LPSPI_Enable(m_spi, 1);
     icm_serif.serif_type = UI_SPI4;
     icm_serif.read_reg    = spi_read;
     icm_serif.write_reg = spi_write;
@@ -62,15 +68,15 @@ int ICM42670::begin() {
     icm_serif.context     = (void*)this;
     icm_serif.max_read    = 2560; /* maximum number of bytes allowed per serial read */
     icm_serif.max_write = 2560; /* maximum number of bytes allowed per serial write */
-    rc = inv_imu_init(&icm_driver, &icm_serif, NULL);
+    rc = inv_imu_init(&m_icm_driver, &icm_serif, NULL);
     if (rc != INV_ERROR_SUCCESS) {
         return rc;
     }
-    icm_driver.sensor_event_cb = event_cb;
-    int1_config = { (inv_imu_interrupt_value)0 };
+    m_icm_driver.sensor_event_cb = event_cb;
+    m_int1_config = { (inv_imu_interrupt_value)0 };
     
     /* Check WHOAMI */
-    rc = inv_imu_get_who_am_i(&icm_driver, &who_am_i);
+    rc = inv_imu_get_who_am_i(&m_icm_driver, &who_am_i);
     if(rc != 0) {
         return -2;
     }
@@ -87,11 +93,11 @@ int ICM42670::begin() {
     int1_pin_config.int_polarity = INT_CONFIG_INT1_POLARITY_HIGH;
     int1_pin_config.int_mode         = INT_CONFIG_INT1_MODE_PULSED;
     int1_pin_config.int_drive        = INT_CONFIG_INT1_DRIVE_CIRCUIT_PP;
-    inv_imu_set_pin_config_int1(&icm_driver, &int1_pin_config);
+    inv_imu_set_pin_config_int1(&m_icm_driver, &int1_pin_config);
 
     /* All APEX off */
-    apex_tilt_enable = false;
-    apex_pedometer_enable = false;
+    m_apex_tilt_enable = false;
+    m_apex_pedometer_enable = false;
 
     // successful init, return 0
     return 0;
@@ -99,24 +105,24 @@ int ICM42670::begin() {
 
 int ICM42670::startAccel(uint16_t odr, uint16_t fsr) {
     int rc = 0;
-    rc |= inv_imu_set_accel_fsr(&icm_driver, accel_fsr_g_to_param(fsr));
-    rc |= inv_imu_set_accel_frequency(&icm_driver, accel_freq_to_param(odr));
-    rc |= inv_imu_enable_accel_low_noise_mode(&icm_driver);
+    rc |= inv_imu_set_accel_fsr(&m_icm_driver, accel_fsr_g_to_param(fsr));
+    rc |= inv_imu_set_accel_frequency(&m_icm_driver, accel_freq_to_param(odr));
+    rc |= inv_imu_enable_accel_low_noise_mode(&m_icm_driver);
     return rc;
 }
 
 int ICM42670::startGyro(uint16_t odr, uint16_t fsr) {
     int rc = 0;
-    rc |= inv_imu_set_gyro_fsr(&icm_driver, gyro_fsr_dps_to_param(fsr));
-    rc |= inv_imu_set_gyro_frequency(&icm_driver, gyro_freq_to_param(odr));
-    rc |= inv_imu_enable_gyro_low_noise_mode(&icm_driver);
+    rc |= inv_imu_set_gyro_fsr(&m_icm_driver, gyro_fsr_dps_to_param(fsr));
+    rc |= inv_imu_set_gyro_frequency(&m_icm_driver, gyro_freq_to_param(odr));
+    rc |= inv_imu_enable_gyro_low_noise_mode(&m_icm_driver);
     return rc;
 }
 
 int ICM42670::getDataFromRegisters(inv_imu_sensor_event_t& evt) {
     // Set event buffer to be used by the callback
     event = &evt;
-    return inv_imu_get_data_from_registers(&icm_driver);
+    return inv_imu_get_data_from_registers(&m_icm_driver);
 }
 
 
@@ -138,18 +144,18 @@ int ICM42670::enableFifoInterrupt(uint8_t intpin, ICM42670_irq_handler handler, 
         return -1;
     }
     enableInterrupt(intpin,handler);
-    rc |= inv_imu_configure_fifo(&icm_driver,INV_IMU_FIFO_ENABLED);
+    rc |= inv_imu_configure_fifo(&m_icm_driver,INV_IMU_FIFO_ENABLED);
     // Configure interrupts sources
-    int1_config.INV_FIFO_THS = INV_IMU_ENABLE;
-    rc |= inv_imu_set_config_int1(&icm_driver, &int1_config);
-    rc |= inv_imu_write_reg(&icm_driver, FIFO_CONFIG2, 1, &fifo_watermark);
+    m_int1_config.INV_FIFO_THS = INV_IMU_ENABLE;
+    rc |= inv_imu_set_config_int1(&m_icm_driver, &m_int1_config);
+    rc |= inv_imu_write_reg(&m_icm_driver, FIFO_CONFIG2, 1, &fifo_watermark);
     // Set fifo_wm_int_w generating condition : fifo_wm_int_w generated when counter == threshold
-    rc |= inv_imu_read_reg(&icm_driver, FIFO_CONFIG5_MREG1, 1, &data);
+    rc |= inv_imu_read_reg(&m_icm_driver, FIFO_CONFIG5_MREG1, 1, &data);
     data &= (uint8_t)~FIFO_CONFIG5_WM_GT_TH_EN;
-    rc |= inv_imu_write_reg(&icm_driver, FIFO_CONFIG5_MREG1, 1, &data);
+    rc |= inv_imu_write_reg(&m_icm_driver, FIFO_CONFIG5_MREG1, 1, &data);
     // Disable APEX to use 2.25kB of fifo for raw data
     data = SENSOR_CONFIG3_APEX_DISABLE_MASK;
-    rc |= inv_imu_write_reg(&icm_driver, SENSOR_CONFIG3_MREG1, 1, &data);
+    rc |= inv_imu_write_reg(&m_icm_driver, SENSOR_CONFIG3_MREG1, 1, &data);
     return rc;
 }
 
@@ -157,8 +163,8 @@ int ICM42670::getDataFromFifo(ICM42670_sensor_event_cb event_cb) {
     if(event_cb == NULL) {
         return -1;
     }
-    icm_driver.sensor_event_cb = event_cb;
-    return inv_imu_get_data_from_fifo(&icm_driver);
+    m_icm_driver.sensor_event_cb = event_cb;
+    return inv_imu_get_data_from_fifo(&m_icm_driver);
 }
 
 bool ICM42670::isAccelDataValid(inv_imu_sensor_event_t *evt) {
@@ -175,30 +181,30 @@ int ICM42670::initApex(uint8_t intpin, ICM42670_irq_handler handler)
     inv_imu_apex_parameters_t apex_inputs;
 
     /* Disabling FIFO usage to optimize power consumption */
-    rc |= inv_imu_configure_fifo(&icm_driver, INV_IMU_FIFO_DISABLED);
+    rc |= inv_imu_configure_fifo(&m_icm_driver, INV_IMU_FIFO_DISABLED);
 
     /* Enable accel in LP mode */
-    rc |= inv_imu_enable_accel_low_power_mode(&icm_driver);
+    rc |= inv_imu_enable_accel_low_power_mode(&m_icm_driver);
 
     /* Disable Pedometer before configuring it */
-    rc |= inv_imu_apex_disable_pedometer(&icm_driver);
-    rc |= inv_imu_apex_disable_tilt(&icm_driver);
+    rc |= inv_imu_apex_disable_pedometer(&m_icm_driver);
+    rc |= inv_imu_apex_disable_tilt(&m_icm_driver);
 
-    rc |= inv_imu_set_accel_frequency(&icm_driver, ACCEL_CONFIG0_ODR_50_HZ);
-    rc |= inv_imu_apex_set_frequency(&icm_driver, APEX_CONFIG1_DMP_ODR_50Hz);
+    rc |= inv_imu_set_accel_frequency(&m_icm_driver, ACCEL_CONFIG0_ODR_50_HZ);
+    rc |= inv_imu_apex_set_frequency(&m_icm_driver, APEX_CONFIG1_DMP_ODR_50Hz);
 
     /* Set APEX parameters */
-    rc |= inv_imu_apex_init_parameters_struct(&icm_driver, &apex_inputs);
+    rc |= inv_imu_apex_init_parameters_struct(&m_icm_driver, &apex_inputs);
     apex_inputs.power_save =APEX_CONFIG0_DMP_POWER_SAVE_DIS;
-    rc |= inv_imu_apex_configure_parameters(&icm_driver, &apex_inputs);
+    rc |= inv_imu_apex_configure_parameters(&m_icm_driver, &apex_inputs);
 
-    rc |= inv_imu_set_config_int1(&icm_driver, &int1_config);
+    rc |= inv_imu_set_config_int1(&m_icm_driver, &m_int1_config);
     enableInterrupt(intpin,handler);
 
-    if(apex_tilt_enable)
-        rc |= inv_imu_apex_enable_tilt(&icm_driver);
-    if(apex_pedometer_enable)
-        rc |= inv_imu_apex_enable_pedometer(&icm_driver);
+    if(m_apex_tilt_enable)
+        rc |= inv_imu_apex_enable_tilt(&m_icm_driver);
+    if(m_apex_pedometer_enable)
+        rc |= inv_imu_apex_enable_pedometer(&m_icm_driver);
 
     return rc;
 }
@@ -207,11 +213,11 @@ int ICM42670::updateApex(void)
 {
     int rc = 0;
     uint8_t data;
-    rc = inv_imu_read_reg(&icm_driver, INT_STATUS3, 1, &data );
+    rc = inv_imu_read_reg(&m_icm_driver, INT_STATUS3, 1, &data );
     if (rc == 0)
     {
         /* Update interrupt status */
-        int_status3 |= data;
+        m_int_status3 |= data;
     }
     return rc;
 }
@@ -219,9 +225,9 @@ int ICM42670::updateApex(void)
 int ICM42670::startTiltDetection(uint8_t intpin, ICM42670_irq_handler handler)
 {
     int rc = 0;
-    apex_tilt_enable = true;
+    m_apex_tilt_enable = true;
     /* Configure interrupts sources */
-    int1_config.INV_TILT_DET = INV_IMU_ENABLE;
+    m_int1_config.INV_TILT_DET = INV_IMU_ENABLE;
     rc |= initApex(intpin,handler);
     return rc;
 }
@@ -229,10 +235,10 @@ int ICM42670::startTiltDetection(uint8_t intpin, ICM42670_irq_handler handler)
 bool ICM42670::getTilt(void)
 {
     updateApex();
-    if (int_status3 & INT_STATUS3_TILT_DET_INT_MASK)
+    if (m_int_status3 & INT_STATUS3_TILT_DET_INT_MASK)
     {
         /* Reset tilt internal status */
-        int_status3 &= ~INT_STATUS3_TILT_DET_INT_MASK;
+        m_int_status3 &= ~INT_STATUS3_TILT_DET_INT_MASK;
         return true;
     }
     return false;
@@ -241,11 +247,11 @@ bool ICM42670::getTilt(void)
 int ICM42670::startPedometer(uint8_t intpin, ICM42670_irq_handler handler)
 {
     int rc = 0;
-    step_cnt_ovflw = 0;
-    apex_pedometer_enable = true;
+    m_step_cnt_ovflw = 0;
+    m_apex_pedometer_enable = true;
     /* Configure interrupts sources */
-    int1_config.INV_STEP_DET            = INV_IMU_ENABLE;
-    int1_config.INV_STEP_CNT_OVFL = INV_IMU_ENABLE;
+    m_int1_config.INV_STEP_DET            = INV_IMU_ENABLE;
+    m_int1_config.INV_STEP_CNT_OVFL = INV_IMU_ENABLE;
     rc |= initApex(intpin,handler);
     return rc;
 }
@@ -257,23 +263,23 @@ int ICM42670::getPedometer(uint32_t& step_count, float& step_cadence, const char
     /* Read APEX interrupt status */
     rc |= updateApex();
 
-    if (int_status3 & INT_STATUS3_STEP_CNT_OVF_INT_MASK)
+    if (m_int_status3 & INT_STATUS3_STEP_CNT_OVF_INT_MASK)
     {
-        step_cnt_ovflw++;
+        m_step_cnt_ovflw++;
         /* Reset pedometer overflow internal status */
-        int_status3 &= ~INT_STATUS3_STEP_CNT_OVF_INT_MASK;
+        m_int_status3 &= ~INT_STATUS3_STEP_CNT_OVF_INT_MASK;
     }
 
-    if (int_status3 & (INT_STATUS3_STEP_DET_INT_MASK)) {
+    if (m_int_status3 & (INT_STATUS3_STEP_DET_INT_MASK)) {
         inv_imu_apex_step_activity_t apex_data0;
         float nb_samples                     = 0;
 
         /* Reset pedometer internal status */
-        int_status3 &= ~INT_STATUS3_STEP_DET_INT_MASK;
+        m_int_status3 &= ~INT_STATUS3_STEP_DET_INT_MASK;
 
-        rc |= inv_imu_apex_get_data_activity(&icm_driver, &apex_data0);
+        rc |= inv_imu_apex_get_data_activity(&m_icm_driver, &apex_data0);
         // to do: detect step counter overflow?
-        step_count = apex_data0.step_cnt + step_cnt_ovflw*(uint32_t)UINT16_MAX;	
+        step_count = apex_data0.step_cnt + m_step_cnt_ovflw*(uint32_t)UINT16_MAX;	
         /* Converting u6.2 to float */
         nb_samples = (apex_data0.step_cadence >> 2) +
                 (float)(apex_data0.step_cadence & 0x03) * 0.25f;
@@ -297,20 +303,20 @@ int ICM42670::startWakeOnMotion(uint8_t intpin, ICM42670_irq_handler handler)
     inv_imu_apex_parameters_t apex_inputs;
 
     /* Configure interrupts sources */
-    int1_config.INV_WOM_X = INV_IMU_ENABLE;
-    int1_config.INV_WOM_Y = INV_IMU_ENABLE;
-    int1_config.INV_WOM_Z = INV_IMU_ENABLE;
-    rc |= inv_imu_set_config_int1(&icm_driver, &int1_config);
+    m_int1_config.INV_WOM_X = INV_IMU_ENABLE;
+    m_int1_config.INV_WOM_Y = INV_IMU_ENABLE;
+    m_int1_config.INV_WOM_Z = INV_IMU_ENABLE;
+    rc |= inv_imu_set_config_int1(&m_icm_driver, &m_int1_config);
 
     /* Disabling FIFO usage to optimize power consumption */
-    rc |= inv_imu_configure_fifo(&icm_driver, INV_IMU_FIFO_DISABLED);
+    rc |= inv_imu_configure_fifo(&m_icm_driver, INV_IMU_FIFO_DISABLED);
 
     /* Disable Pedometer before configuring it */
-    rc |= inv_imu_apex_disable_pedometer(&icm_driver);
-    rc |= inv_imu_apex_disable_tilt(&icm_driver);
+    rc |= inv_imu_apex_disable_pedometer(&m_icm_driver);
+    rc |= inv_imu_apex_disable_tilt(&m_icm_driver);
 
-    apex_tilt_enable = false;
-    apex_pedometer_enable = false;
+    m_apex_tilt_enable = false;
+    m_apex_pedometer_enable = false;
 
     enableInterrupt(intpin,handler);
 
@@ -320,14 +326,14 @@ int ICM42670::startWakeOnMotion(uint8_t intpin, ICM42670_irq_handler handler)
      * - Set 2X averaging.
      * - Use Low-Power mode at low frequency.
      */
-    rc |= inv_imu_set_accel_lp_avg(&icm_driver, ACCEL_CONFIG1_ACCEL_FILT_AVG_2);
-    rc |= inv_imu_set_accel_frequency(&icm_driver, ACCEL_CONFIG0_ODR_12_5_HZ);
-    rc |= inv_imu_enable_accel_low_power_mode(&icm_driver);
+    rc |= inv_imu_set_accel_lp_avg(&m_icm_driver, ACCEL_CONFIG1_ACCEL_FILT_AVG_2);
+    rc |= inv_imu_set_accel_frequency(&m_icm_driver, ACCEL_CONFIG0_ODR_12_5_HZ);
+    rc |= inv_imu_enable_accel_low_power_mode(&m_icm_driver);
 
     /* Configure and enable WOM */
-    rc |= inv_imu_configure_wom(&icm_driver, WOM_THRESHOLD, WOM_THRESHOLD, WOM_THRESHOLD,
+    rc |= inv_imu_configure_wom(&m_icm_driver, WOM_THRESHOLD, WOM_THRESHOLD, WOM_THRESHOLD,
 							WOM_CONFIG_WOM_INT_MODE_ORED, WOM_CONFIG_WOM_INT_DUR_1_SMPL);
-    rc |= inv_imu_enable_wom(&icm_driver);
+    rc |= inv_imu_enable_wom(&m_icm_driver);
     return rc;
 }
 
@@ -346,7 +352,7 @@ static int spi_write(inv_imu_serif* serif, uint8_t reg, const uint8_t * wbuffer,
     xfer.dataSize = wlen + 1;
     xfer.configFlags = kLPSPI_MasterPcs0 | kLPSPI_MasterWidth1 | kLPSPI_MasterPcsContinuous;
 
-    LPSPI_MasterTransferBlocking(obj->spi, &xfer);
+    LPSPI_MasterTransferBlocking(obj->m_spi, &xfer);
     return 0;
 }
 
@@ -365,7 +371,7 @@ static int spi_read(inv_imu_serif* serif, uint8_t reg, uint8_t * rbuffer, uint32
     xfer.dataSize = rlen + 1;
     xfer.configFlags = kLPSPI_MasterPcs0 | kLPSPI_MasterWidth1 | kLPSPI_MasterPcsContinuous;
 
-    LPSPI_MasterTransferBlocking(obj->spi, &xfer);
+    LPSPI_MasterTransferBlocking(obj->m_spi, &xfer);
 
     // Copy data to output buffer
     memcpy(rbuffer, inbuffer+1, rlen);
